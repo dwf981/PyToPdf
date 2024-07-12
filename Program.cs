@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using iText.Kernel.Pdf;
 using iText.Layout;
 using iText.Layout.Element;
@@ -11,6 +12,8 @@ namespace PyToPdf
 {
     class Program
     {
+        static List<string> ignoredPatterns = new List<string>();
+
         static void Main(string[] args)
         {
             string rootDirectory;
@@ -42,11 +45,11 @@ namespace PyToPdf
                 extensions = args[1].Split(',').Select(ext => ext.Trim() == "*" ? ext : $"*.{ext.Trim()}").ToArray();
             }
 
-            // Verify that the directory exists
-            if (!Directory.Exists(rootDirectory))
+            // Parse .gitignore if it exists
+            string gitignorePath = Path.Combine(rootDirectory, ".gitignore");
+            if (File.Exists(gitignorePath))
             {
-                Console.WriteLine($"Error: Directory '{rootDirectory}' does not exist.");
-                return;
+                ParseGitignore(gitignorePath);
             }
 
             // Get the name of the directory
@@ -60,8 +63,8 @@ namespace PyToPdf
 
             // Generate and add project tree
             document.Add(new Paragraph("Project Tree:").SetBold().SetFontSize(14));
-            string projectTree = GenerateProjectTree(rootDirectory, extensions, outputFileName);
-            document.Add(new Paragraph(projectTree).SetFontSize(10));
+            string treeContent = GenerateProjectTree(rootDirectory, extensions, outputFileName);
+            document.Add(new Paragraph(treeContent).SetFontSize(10));
 
             // Add a page break after the project tree
             document.Add(new AreaBreak());
@@ -69,10 +72,12 @@ namespace PyToPdf
             // Traverse all files with specified extensions in the directory and its subdirectories
             foreach (var extension in extensions)
             {
-                foreach (var file in Directory.GetFiles(rootDirectory, extension, SearchOption.AllDirectories))
+                foreach (var file in Directory.GetFiles(rootDirectory, extension, SearchOption.AllDirectories)
+                    .Where(f => !IsIgnored(f, rootDirectory)))
                 {
-                    // Skip the output PDF file
-                    if (Path.GetFileName(file).Equals(outputFileName, StringComparison.OrdinalIgnoreCase))
+                    // Skip the output PDF file and files in .git directory
+                    if (Path.GetFileName(file).Equals(outputFileName, StringComparison.OrdinalIgnoreCase) ||
+                        file.Contains(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar))
                     {
                         continue;
                     }
@@ -104,22 +109,61 @@ namespace PyToPdf
             Console.WriteLine($"PDF '{outputFileName}' created successfully!");
         }
 
+        static void ParseGitignore(string gitignorePath)
+        {
+            foreach (var line in File.ReadAllLines(gitignorePath))
+            {
+                string trimmedLine = line.Trim();
+                if (!string.IsNullOrEmpty(trimmedLine) && !trimmedLine.StartsWith("#"))
+                {
+                    ignoredPatterns.Add(trimmedLine);
+                }
+            }
+        }
+
+        static bool IsIgnored(string filePath, string rootPath)
+        {
+            string relativePath = Path.GetRelativePath(rootPath, filePath);
+            foreach (var pattern in ignoredPatterns)
+            {
+                if (IsMatch(relativePath, pattern))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static bool IsMatch(string path, string pattern)
+        {
+            string regex = "^" + Regex.Escape(pattern)
+                .Replace(@"\*\*/", ".*")
+                .Replace(@"\*", "[^/]*")
+                .Replace(@"\?", ".") + "$";
+
+            return Regex.IsMatch(path, regex, RegexOptions.IgnoreCase);
+        }
+
         static string GenerateProjectTree(string rootPath, string[] extensions, string outputFileName)
         {
             var tree = new StringBuilder();
             var dirInfo = new DirectoryInfo(rootPath);
             tree.AppendLine(dirInfo.Name);
-            GenerateProjectTreeRecursive(dirInfo, "", tree, extensions, outputFileName);
+            GenerateProjectTreeRecursive(dirInfo, "", tree, extensions, outputFileName, rootPath);
             return tree.ToString();
         }
 
-        static void GenerateProjectTreeRecursive(DirectoryInfo dir, string indent, StringBuilder tree, string[] extensions, string outputFileName)
+        static void GenerateProjectTreeRecursive(DirectoryInfo dir, string indent, StringBuilder tree, string[] extensions, string outputFileName, string rootPath)
         {
             var files = dir.GetFiles()
                 .Where(f => (extensions.Contains("*") || extensions.Any(ext => f.Name.EndsWith(ext.TrimStart('*'), StringComparison.OrdinalIgnoreCase)))
-                            && !f.Name.Equals(outputFileName, StringComparison.OrdinalIgnoreCase))
+                            && !f.Name.Equals(outputFileName, StringComparison.OrdinalIgnoreCase)
+                            && !IsIgnored(f.FullName, rootPath))
                 .OrderBy(f => f.Name);
-            var subDirs = dir.GetDirectories().OrderBy(d => d.Name);
+
+            var subDirs = dir.GetDirectories()
+                .Where(d => d.Name != ".git" && !IsIgnored(d.FullName, rootPath))
+                .OrderBy(d => d.Name);
 
             foreach (var file in files)
             {
@@ -129,7 +173,7 @@ namespace PyToPdf
             foreach (var subDir in subDirs)
             {
                 tree.AppendLine($"{indent}├── {subDir.Name}/");
-                GenerateProjectTreeRecursive(subDir, indent + "│   ", tree, extensions, outputFileName);
+                GenerateProjectTreeRecursive(subDir, indent + "│   ", tree, extensions, outputFileName, rootPath);
             }
         }
     }
