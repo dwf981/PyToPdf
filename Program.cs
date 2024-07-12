@@ -22,7 +22,7 @@ namespace PyToPdf
             if (args.Length == 0)
             {
                 rootDirectory = Directory.GetCurrentDirectory();
-                extensions = new[] { "*.py" };
+                extensions = new[] { "*" };  // Changed to include all files
             }
             else if (args.Length == 1 && args[0] == "*")
             {
@@ -37,7 +37,7 @@ namespace PyToPdf
             else if (args.Length == 1)
             {
                 rootDirectory = args[0];
-                extensions = new[] { "*.py" };
+                extensions = new[] { "*" };  // Changed to include all files
             }
             else
             {
@@ -73,7 +73,7 @@ namespace PyToPdf
             foreach (var extension in extensions)
             {
                 foreach (var file in Directory.GetFiles(rootDirectory, extension, SearchOption.AllDirectories)
-                    .Where(f => !IsIgnored(f, rootDirectory)))
+                    .Where(f => !IsIgnored(f, rootDirectory) && IsTextFile(f)))
                 {
                     // Skip the output PDF file and files in .git directory
                     if (Path.GetFileName(file).Equals(outputFileName, StringComparison.OrdinalIgnoreCase) ||
@@ -158,7 +158,8 @@ namespace PyToPdf
             var files = dir.GetFiles()
                 .Where(f => (extensions.Contains("*") || extensions.Any(ext => f.Name.EndsWith(ext.TrimStart('*'), StringComparison.OrdinalIgnoreCase)))
                             && !f.Name.Equals(outputFileName, StringComparison.OrdinalIgnoreCase)
-                            && !IsIgnored(f.FullName, rootPath))
+                            && !IsIgnored(f.FullName, rootPath)
+                            && IsTextFile(f.FullName))
                 .OrderBy(f => f.Name);
 
             var subDirs = dir.GetDirectories()
@@ -174,6 +175,34 @@ namespace PyToPdf
             {
                 tree.AppendLine($"{indent}├── {subDir.Name}/");
                 GenerateProjectTreeRecursive(subDir, indent + "│   ", tree, extensions, outputFileName, rootPath);
+            }
+        }
+
+        static bool IsTextFile(string filePath)
+        {
+            const int charsToCheck = 8000;
+            const double asciiThreshold = 0.9;
+
+            try
+            {
+                using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+                using (var streamReader = new StreamReader(fileStream))
+                {
+                    char[] buffer = new char[charsToCheck];
+                    int bytesRead = streamReader.Read(buffer, 0, charsToCheck);
+
+                    if (bytesRead == 0)
+                    {
+                        return true; // Empty file, consider it as text
+                    }
+
+                    int asciiCount = buffer.Take(bytesRead).Count(c => c <= 127);
+                    return (double)asciiCount / bytesRead >= asciiThreshold;
+                }
+            }
+            catch
+            {
+                return false; // If we can't read the file, assume it's not text
             }
         }
     }
