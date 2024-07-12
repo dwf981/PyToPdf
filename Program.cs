@@ -22,7 +22,7 @@ namespace PyToPdf
             if (args.Length == 0)
             {
                 rootDirectory = Directory.GetCurrentDirectory();
-                extensions = new[] { "*" };  // Changed to include all files
+                extensions = new[] { "*" };
             }
             else if (args.Length == 1 && args[0] == "*")
             {
@@ -37,7 +37,7 @@ namespace PyToPdf
             else if (args.Length == 1)
             {
                 rootDirectory = args[0];
-                extensions = new[] { "*" };  // Changed to include all files
+                extensions = new[] { "*" };
             }
             else
             {
@@ -123,10 +123,12 @@ namespace PyToPdf
 
         static bool IsIgnored(string filePath, string rootPath)
         {
-            string relativePath = Path.GetRelativePath(rootPath, filePath);
+            string relativePath = Path.GetRelativePath(rootPath, filePath).Replace('\\', '/');
+            bool isDirectory = Directory.Exists(filePath);
+
             foreach (var pattern in ignoredPatterns)
             {
-                if (IsMatch(relativePath, pattern))
+                if (IsMatch(relativePath, pattern, isDirectory))
                 {
                     return true;
                 }
@@ -134,12 +136,56 @@ namespace PyToPdf
             return false;
         }
 
-        static bool IsMatch(string path, string pattern)
+        static bool IsMatch(string path, string pattern, bool isDirectory)
         {
-            string regex = "^" + Regex.Escape(pattern)
-                .Replace(@"\*\*/", ".*")
-                .Replace(@"\*", "[^/]*")
-                .Replace(@"\?", ".") + "$";
+            // Convert .gitignore pattern to regex
+            string regex = "^";
+            bool isExactMatch = !pattern.EndsWith("/");
+
+            // Handle directory-only patterns
+            if (pattern.EndsWith("/") && !isDirectory)
+            {
+                return false;
+            }
+
+            // Split pattern into segments
+            var segments = pattern.Split('/');
+            for (int i = 0; i < segments.Length; i++)
+            {
+                string segment = segments[i];
+
+                if (i > 0)
+                {
+                    regex += "\\/";
+                }
+
+                if (segment == "**")
+                {
+                    regex += ".*";
+                }
+                else
+                {
+                    regex += string.Join("",
+                        segment.Select(c => c switch
+                        {
+                            '*' => "[^/]*",
+                            '?' => "[^/]",
+                            '.' => "\\.",
+                            _ => Regex.Escape(c.ToString())
+                        })
+                    );
+                }
+            }
+
+            // Handle exact matches
+            if (isExactMatch && !isDirectory)
+            {
+                regex += "$";
+            }
+            else if (!isExactMatch)
+            {
+                regex += "(/.+)?$";
+            }
 
             return Regex.IsMatch(path, regex, RegexOptions.IgnoreCase);
         }
@@ -155,6 +201,11 @@ namespace PyToPdf
 
         static void GenerateProjectTreeRecursive(DirectoryInfo dir, string indent, StringBuilder tree, string[] extensions, string outputFileName, string rootPath)
         {
+            if (IsIgnored(dir.FullName, rootPath))
+            {
+                return;
+            }
+
             var files = dir.GetFiles()
                 .Where(f => (extensions.Contains("*") || extensions.Any(ext => f.Name.EndsWith(ext.TrimStart('*'), StringComparison.OrdinalIgnoreCase)))
                             && !f.Name.Equals(outputFileName, StringComparison.OrdinalIgnoreCase)
