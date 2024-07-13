@@ -77,7 +77,8 @@ namespace PyToPdf
                 {
                     // Skip the output PDF file and files in .git directory
                     if (Path.GetFileName(file).Equals(outputFileName, StringComparison.OrdinalIgnoreCase) ||
-                        file.Contains(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar))
+                        file.Contains(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar) ||
+                        file.Contains(Path.DirectorySeparatorChar + ".vs" + Path.DirectorySeparatorChar))
                     {
                         continue;
                     }
@@ -214,7 +215,7 @@ namespace PyToPdf
                 .OrderBy(f => f.Name);
 
             var subDirs = dir.GetDirectories()
-                .Where(d => d.Name != ".git" && !IsIgnored(d.FullName, rootPath))
+                .Where(d => d.Name != ".git" && d.Name != ".vs" && !IsIgnored(d.FullName, rootPath))
                 .OrderBy(d => d.Name);
 
             foreach (var file in files)
