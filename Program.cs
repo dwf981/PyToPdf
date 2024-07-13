@@ -231,6 +231,15 @@ namespace PyToPdf
 
         static bool IsTextFile(string filePath)
         {
+            // List of known binary file extensions
+            string[] binaryExtensions = { ".exe", ".dll", ".obj", ".cache", ".bin", ".dat", ".iso", ".zip", ".rar", ".7z", ".gz", ".tar" };
+
+            // Check if the file has a known binary extension
+            if (binaryExtensions.Contains(Path.GetExtension(filePath).ToLower()))
+            {
+                return false;
+            }
+
             const int charsToCheck = 8000;
             const double asciiThreshold = 0.9;
 
