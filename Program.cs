@@ -97,8 +97,8 @@ namespace PyToPdf
                         continue;
                     }
 
-                    // Get the relative path of the file
-                    string relativePath = Path.GetRelativePath(rootDirectory, file);
+                    // Get the relative path of the file and normalize it
+                    string relativePath = NormalizePath(Path.GetRelativePath(rootDirectory, file));
 
                     // Add the relative path as a chapter title
                     document.Add(new Paragraph(relativePath).SetBold().SetFontSize(12));
@@ -258,7 +258,7 @@ namespace PyToPdf
             var files = GetAllFiles(rootPath, extensions, outputFileName);
             foreach (var file in files.OrderBy(f => f))
             {
-                string relativePath = Path.GetRelativePath(rootPath, file);
+                string relativePath = NormalizePath(Path.GetRelativePath(rootPath, file));
                 tree.AppendLine($"├── {relativePath}");
             }
             return tree.ToString();
@@ -277,6 +277,11 @@ namespace PyToPdf
                                 IsTextFile(f)));
             }
             return files.Distinct().ToList();
+        }
+
+        static string NormalizePath(string path)
+        {
+            return path.Replace('\\', '/');
         }
 
         static bool IsTextFile(string filePath)
