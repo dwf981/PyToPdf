@@ -1,0 +1,15 @@
+{
+  "extensions": [
+    "cs",
+    "csproj",
+    "sln",
+    "bat",
+    "md"
+  ],
+  "exclude": [
+    ".git",
+    ".vscode",
+    "obj",
+    "bin"
+  ]
+}
