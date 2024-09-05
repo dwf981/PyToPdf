@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using iText.Kernel.Pdf;
 using iText.Layout;
 using iText.Layout.Element;
@@ -13,6 +14,7 @@ namespace PyToPdf
     class Program
     {
         static List<string> ignoredPatterns = new List<string>();
+        static List<string> excludeList = new List<string>();
 
         static void Main(string[] args)
         {
@@ -22,7 +24,15 @@ namespace PyToPdf
             if (args.Length == 0)
             {
                 rootDirectory = Directory.GetCurrentDirectory();
-                extensions = new[] { "*" };
+                string jsonConfigPath = Path.Combine(rootDirectory, ".vscode", "topdf.json");
+                if (File.Exists(jsonConfigPath))
+                {
+                    (extensions, excludeList) = ParseJsonConfig(jsonConfigPath);
+                }
+                else
+                {
+                    extensions = new[] { "*" };
+                }
             }
             else if (args.Length == 1 && args[0] == "*")
             {
@@ -73,7 +83,7 @@ namespace PyToPdf
             foreach (var extension in extensions)
             {
                 foreach (var file in Directory.GetFiles(rootDirectory, extension, SearchOption.AllDirectories)
-                    .Where(f => !IsIgnored(f, rootDirectory) && IsTextFile(f)))
+                    .Where(f => !IsIgnored(f, rootDirectory) && !IsExcluded(f) && IsTextFile(f)))
                 {
                     // Skip the output PDF file and files in .git directory
                     if (Path.GetFileName(file).Equals(outputFileName, StringComparison.OrdinalIgnoreCase) ||
@@ -110,6 +120,27 @@ namespace PyToPdf
             Console.WriteLine($"PDF '{outputFileName}' created successfully!");
         }
 
+        static (string[], List<string>) ParseJsonConfig(string jsonPath)
+        {
+            string jsonContent = File.ReadAllText(jsonPath);
+            using JsonDocument doc = JsonDocument.Parse(jsonContent);
+            JsonElement root = doc.RootElement;
+
+            string[] extensions = root.GetProperty("extensions").EnumerateArray()
+                .Select(e => e.GetString())
+                .Where(e => e != null)
+                .Select(e => $"*.{e}")
+                .ToArray();
+
+            List<string> excludeList = root.GetProperty("exclude").EnumerateArray()
+                .Select(e => e.GetString())
+                .Where(e => e != null)
+                .Select(e => e!) // Use the null-forgiving operator
+                .ToList();
+
+            return (extensions, excludeList);
+        }
+
         static void ParseGitignore(string gitignorePath)
         {
             foreach (var line in File.ReadAllLines(gitignorePath))
@@ -135,6 +166,12 @@ namespace PyToPdf
                 }
             }
             return false;
+        }
+
+        static bool IsExcluded(string filePath)
+        {
+            string fileName = Path.GetFileName(filePath);
+            return excludeList.Contains(fileName);
         }
 
         static bool IsMatch(string path, string pattern, bool isDirectory)
@@ -202,7 +239,7 @@ namespace PyToPdf
 
         static void GenerateProjectTreeRecursive(DirectoryInfo dir, string indent, StringBuilder tree, string[] extensions, string outputFileName, string rootPath)
         {
-            if (IsIgnored(dir.FullName, rootPath))
+            if (IsIgnored(dir.FullName, rootPath) || IsExcluded(dir.FullName))
             {
                 return;
             }
@@ -211,11 +248,12 @@ namespace PyToPdf
                 .Where(f => (extensions.Contains("*") || extensions.Any(ext => f.Name.EndsWith(ext.TrimStart('*'), StringComparison.OrdinalIgnoreCase)))
                             && !f.Name.Equals(outputFileName, StringComparison.OrdinalIgnoreCase)
                             && !IsIgnored(f.FullName, rootPath)
+                            && !IsExcluded(f.FullName)
                             && IsTextFile(f.FullName))
                 .OrderBy(f => f.Name);
 
             var subDirs = dir.GetDirectories()
-                .Where(d => d.Name != ".git" && d.Name != ".vs" && !IsIgnored(d.FullName, rootPath))
+                .Where(d => d.Name != ".git" && d.Name != ".vs" && !IsIgnored(d.FullName, rootPath) && !IsExcluded(d.FullName))
                 .OrderBy(d => d.Name);
 
             foreach (var file in files)
