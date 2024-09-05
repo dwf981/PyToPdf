@@ -9,7 +9,7 @@ using iText.Kernel.Pdf;
 using iText.Layout;
 using iText.Layout.Element;
 
-namespace PyToPdf
+namespace ToPdf
 {
     class Program
     {

@@ -1,6 +1,6 @@
-# PyToPdf
+# ToPdf
 
-PyToPdf is a C# console application that generates a PDF document containing the content of specified files within a directory and its subdirectories. It also includes a project tree structure at the beginning of the PDF for easy navigation.
+ToPdf is a C# console application that generates a PDF document containing the content of specified files within a directory and its subdirectories. It also includes a project tree structure at the beginning of the PDF for easy navigation.
 
 ## Features
 
@@ -21,46 +21,49 @@ PyToPdf is a C# console application that generates a PDF document containing the
 1. Clone the repository or download the source code.
 2. Ensure you have the .NET 8.0 SDK installed.
 3. Restore the NuGet packages by running:
-   ```
-   dotnet restore
-   ```
+
+```
+dotnet restore
+```
+
 4. Build the project:
-   ```
-   dotnet build --configuration Release
-   ```
+
+```
+dotnet build --configuration Release
+```
 
 ## Usage
 
 Run the compiled executable with the following syntax:
 
 ```
-PyToPdf.exe [directory_path] [file_extensions]
+ToPdf.exe [directory_path] [file_extensions]
 ```
 
 - `[directory_path]` (optional): The path to the directory you want to process. If not specified, the current directory will be used.
-- `[file_extensions]` (optional): A comma-separated list of file extensions to include. Use "*" to include all file types. If not specified, only .py files will be included.
+- `[file_extensions]` (optional): A comma-separated list of file extensions to include. Use "*" to include all file types. If not specified, all file types will be included.
 
 ### Examples
 
 1. Process all files in the current directory:
-   ```
-   PyToPdf.exe *
-   ```
+```
+ToPdf.exe *
+```
 
 2. Process specific file types in the current directory:
-   ```
-   PyToPdf.exe py,md,txt,toml
-   ```
+```
+ToPdf.exe py,md,txt,toml
+```
 
 3. Process all files in a specific directory:
-   ```
-   PyToPdf.exe C:\your\directory\path *
-   ```
+```
+ToPdf.exe C:\your\directory\path *
+```
 
 4. Process specific file types in a given directory:
-   ```
-   PyToPdf.exe C:\your\directory\path py,md,txt,toml
-   ```
+```
+ToPdf.exe C:\your\directory\path py,md,txt,toml
+```
 
 ## Output
 
@@ -87,4 +90,3 @@ This project is open source and available under the [MIT License](LICENSE).
 ## Acknowledgements
 
 - This project uses the [iText 7](https://itextpdf.com/en/products/itext-7/itext-7-core) library for PDF generation.
-
