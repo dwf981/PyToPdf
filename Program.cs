@@ -55,6 +55,10 @@ namespace PyToPdf
                 extensions = args[1].Split(',').Select(ext => ext.Trim() == "*" ? ext : $"*.{ext.Trim()}").ToArray();
             }
 
+            // Display extensions and excluded files
+            Console.WriteLine($"Extensions: {string.Join(", ", extensions)}");
+            Console.WriteLine($"Excluded: {string.Join(", ", excludeList)}");
+
             // Parse .gitignore if it exists
             string gitignorePath = Path.Combine(rootDirectory, ".gitignore");
             if (File.Exists(gitignorePath))
@@ -83,7 +87,7 @@ namespace PyToPdf
             foreach (var extension in extensions)
             {
                 foreach (var file in Directory.GetFiles(rootDirectory, extension, SearchOption.AllDirectories)
-                    .Where(f => !IsIgnored(f, rootDirectory) && !IsExcluded(f) && IsTextFile(f)))
+                    .Where(f => !IsIgnored(f, rootDirectory) && IsTextFile(f)))
                 {
                     // Skip the output PDF file and files in .git directory
                     if (Path.GetFileName(file).Equals(outputFileName, StringComparison.OrdinalIgnoreCase) ||
@@ -101,15 +105,31 @@ namespace PyToPdf
 
                     try
                     {
-                        // Read the content of the file
-                        string content = File.ReadAllText(file);
+                        if (!IsExcluded(file))
+                        {
+                            // Read the content of the file
+                            string content = File.ReadAllText(file);
 
-                        // Add the content to the PDF
-                        document.Add(new Paragraph(content).SetFontSize(10));
+                            // Add the content to the PDF
+                            document.Add(new Paragraph(content).SetFontSize(10));
+
+                            // Display info about the added file
+                            string fileSize = GetHumanReadableFileSize(content.Length);
+                            Console.WriteLine($"Added to PDF: {relativePath} ({fileSize})");
+                        }
+                        else
+                        {
+                            // Add a placeholder for excluded files
+                            document.Add(new Paragraph("[content not included]").SetFontSize(10));
+
+                            // Display info about the excluded file
+                            Console.WriteLine($"Excluded from PDF: {relativePath}");
+                        }
                     }
                     catch (Exception ex)
                     {
                         document.Add(new Paragraph($"Error reading file: {ex.Message}").SetFontSize(10));
+                        Console.WriteLine($"Error processing file: {relativePath} - {ex.Message}");
                     }
                 }
             }
@@ -117,7 +137,11 @@ namespace PyToPdf
             // Close the PDF document
             document.Close();
 
-            Console.WriteLine($"PDF '{outputFileName}' created successfully!");
+            // Get the size of the created PDF file
+            long pdfSize = new FileInfo(outputFileName).Length;
+            string readablePdfSize = GetHumanReadableFileSize(pdfSize);
+
+            Console.WriteLine($"PDF '{outputFileName}' created successfully! Size: {readablePdfSize}");
         }
 
         static (string[], List<string>) ParseJsonConfig(string jsonPath)
@@ -168,10 +192,10 @@ namespace PyToPdf
             return false;
         }
 
-        static bool IsExcluded(string filePath)
+        static bool IsExcluded(string path)
         {
-            string fileName = Path.GetFileName(filePath);
-            return excludeList.Contains(fileName);
+            string[] pathParts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return excludeList.Any(excludedItem => pathParts.Contains(excludedItem, StringComparer.OrdinalIgnoreCase));
         }
 
         static bool IsMatch(string path, string pattern, bool isDirectory)
@@ -231,41 +255,28 @@ namespace PyToPdf
         static string GenerateProjectTree(string rootPath, string[] extensions, string outputFileName)
         {
             var tree = new StringBuilder();
-            var dirInfo = new DirectoryInfo(rootPath);
-            tree.AppendLine(dirInfo.Name);
-            GenerateProjectTreeRecursive(dirInfo, "", tree, extensions, outputFileName, rootPath);
+            var files = GetAllFiles(rootPath, extensions, outputFileName);
+            foreach (var file in files.OrderBy(f => f))
+            {
+                string relativePath = Path.GetRelativePath(rootPath, file);
+                tree.AppendLine($"├── {relativePath}");
+            }
             return tree.ToString();
         }
 
-        static void GenerateProjectTreeRecursive(DirectoryInfo dir, string indent, StringBuilder tree, string[] extensions, string outputFileName, string rootPath)
+        static List<string> GetAllFiles(string rootPath, string[] extensions, string outputFileName)
         {
-            if (IsIgnored(dir.FullName, rootPath) || IsExcluded(dir.FullName))
+            var files = new List<string>();
+            foreach (var extension in extensions)
             {
-                return;
+                files.AddRange(Directory.GetFiles(rootPath, extension, SearchOption.AllDirectories)
+                    .Where(f => !Path.GetFileName(f).Equals(outputFileName, StringComparison.OrdinalIgnoreCase) &&
+                                !f.Contains(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar) &&
+                                !f.Contains(Path.DirectorySeparatorChar + ".vs" + Path.DirectorySeparatorChar) &&
+                                !IsIgnored(f, rootPath) &&
+                                IsTextFile(f)));
             }
-
-            var files = dir.GetFiles()
-                .Where(f => (extensions.Contains("*") || extensions.Any(ext => f.Name.EndsWith(ext.TrimStart('*'), StringComparison.OrdinalIgnoreCase)))
-                            && !f.Name.Equals(outputFileName, StringComparison.OrdinalIgnoreCase)
-                            && !IsIgnored(f.FullName, rootPath)
-                            && !IsExcluded(f.FullName)
-                            && IsTextFile(f.FullName))
-                .OrderBy(f => f.Name);
-
-            var subDirs = dir.GetDirectories()
-                .Where(d => d.Name != ".git" && d.Name != ".vs" && !IsIgnored(d.FullName, rootPath) && !IsExcluded(d.FullName))
-                .OrderBy(d => d.Name);
-
-            foreach (var file in files)
-            {
-                tree.AppendLine($"{indent}├── {file.Name}");
-            }
-
-            foreach (var subDir in subDirs)
-            {
-                tree.AppendLine($"{indent}├── {subDir.Name}/");
-                GenerateProjectTreeRecursive(subDir, indent + "│   ", tree, extensions, outputFileName, rootPath);
-            }
+            return files.Distinct().ToList();
         }
 
         static bool IsTextFile(string filePath)
@@ -303,6 +314,19 @@ namespace PyToPdf
             {
                 return false; // If we can't read the file, assume it's not text
             }
+        }
+
+        static string GetHumanReadableFileSize(long bytes)
+        {
+            string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+            int order = 0;
+            double len = bytes;
+            while (len >= 1024 && order < sizes.Length - 1)
+            {
+                order++;
+                len = len / 1024;
+            }
+            return $"{len:0.##} {sizes[order]}";
         }
     }
 }
